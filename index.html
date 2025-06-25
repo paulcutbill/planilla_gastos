@@ -1,0 +1,163 @@
+
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mis Gastos Mensuales</title>
+<style>
+  :root {
+    --primary-color: #4a90e2;
+    --secondary-color: #d8e6f8;
+    --success-color: #a8d5a2; /* verde claro */
+    --error-color: #f9b3b3; /* rojo claro */
+    --background: #f5f7fa;
+    --text-color: #333;
+    --card-bg: #ffffff;
+    --border-radius: 8px;
+    --shadow: 0 2px 8px rgba(0,0,0,0.1);
+  }
+  body { background: var(--background); color: var(--text-color); font-family: 'Segoe UI', sans-serif; margin: 0; padding: 20px; }
+  .container { max-width: 900px; margin: auto; }
+  h1, h2 { text-align: center; margin-bottom: 16px; }
+  .breadcrumb {
+    display: flex; gap: 8px; list-style: none; padding: 8px 16px; background: var(--card-bg);
+    border-radius: var(--border-radius); box-shadow: var(--shadow); margin-bottom: 20px;
+  }
+  .breadcrumb li {
+    cursor: pointer; color: var(--primary-color);
+  }
+  .breadcrumb li + li:before { content: ">"; margin: 0 4px; color: #888; }
+  .controls, .totals, table, form {
+    background: var(--card-bg); padding: 16px; border-radius: var(--border-radius);
+    box-shadow: var(--shadow); margin-bottom: 20px;
+  }
+  .controls { display: flex; flex-wrap: wrap; gap: 12px; justify-content: space-between; }
+  .controls label { display: flex; flex-direction: column; flex: 1 1 140px; font-size: .9em; }
+  .controls input, .controls select, .controls button { padding: 8px; margin-top: 6px; border: 1px solid #ccc; border-radius: 4px; }
+  .controls button { background: var(--primary-color); color: #fff; border: none; cursor: pointer; }
+  .controls button:hover { background: #357ab8; }
+  .totals { display: flex; justify-content: space-around; }
+  .totals p { margin: 0; font-size: 1.1em; }
+  table { width: 100%; border-collapse: collapse; }
+  thead { background: var(--primary-color); color: #fff; position: sticky; top: 0; }
+  th, td { padding: 8px; text-align: center; border: 1px solid #ddd; }
+  tbody tr:nth-child(even) { background: #f9fbfc; }
+  tbody tr.pend { background: var(--error-color); color: var(--text-color); }
+  tbody tr.paid { background: var(--success-color); color: var(--text-color); }
+  td span[contenteditable] { background: var(--secondary-color); padding: 4px; border-radius: 4px; min-width: 60px; display: inline-block; }
+  select, input[type='file'], input[type='number'] { padding: 4px; border-radius: 4px; border: 1px solid #ccc; font-size: .95em; }
+  input[type='file'] { width: 100px; }
+  button.toggle { padding: 6px 10px; background: var(--primary-color); color: #fff; border: none; border-radius: 4px; cursor: pointer; }
+  form label { display: block; margin-bottom: 8px; }
+  form input, form select, form button { width: 100%; max-width: 200px; padding: 8px; border: 1px solid #ccc; border-radius: 4px; }
+  form button { background: var(--primary-color); color: #fff; border: none; cursor: pointer; margin-top: 12px; }
+  @media (max-width: 600px) {
+    .controls { flex-direction: column; }
+    .totals { flex-direction: column; gap: 12px; }
+    .breadcrumb { font-size: 0.9em; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>Mis Gastos mensuales</h1>
+  <ul class="breadcrumb" id="breadcrumb"></ul>
+  <div class="controls">
+    <label>Mes: <input type="month" id="month"></label>
+    <label>Sueldo (CLP): <input type="number" id="salary" step="0.01"></label>
+    <button id="saveSal">Guardar Sueldo</button>
+  </div>
+  <div class="totals">
+    <p>Total: <span id="total">$0</span></p>
+    <p>Pendiente: <span id="pending">$0</span></p>
+    <p>Restante: <span id="remaining">$0</span></p>
+  </div>
+  <table>
+    <thead>
+      <tr><th>Fecha</th><th>Categoría</th><th>Tipo</th><th>Desc</th><th>Monto</th><th>Estado</th><th>Ticket</th><th>Incluye</th></tr>
+    </thead>
+    <tbody id="body"></tbody>
+  </table>
+  <h2>Agregar Gasto</h2>
+  <form id="form">
+    <label>Fecha: <input type="date" name="date" required></label>
+    <label>Categoría: <input type="text" name="category"></label>
+    <label>Tipo:
+      <select name="type">
+        <option>Fijo</option><option>Esporádico</option><option>Ahorro</option>
+      </select>
+    </label>
+    <label>Desc: <input type="text" name="desc" required></label>
+    <label>Monto: <input type="number" name="amount" step="0.01" required></label>
+    <label>Incluir Próx Mes:
+      <select name="includeNext"><option>Sí</option><option>No</option></select>
+    </label>
+    <button type="submit">Agregar</button>
+  </form>
+</div>
+<script>
+const fmt=new Intl.NumberFormat('es-CL',{style:'currency',currency:'CLP'});
+const monthEl=document.getElementById('month'), salEl=document.getElementById('salary');
+function key(m){return 'data_'+m;} function salKey(m){return 'sal_'+m;}
+function load(m){return JSON.parse(localStorage.getItem(key(m))||'[]');}
+function save(m,a){localStorage.setItem(key(m),JSON.stringify(a));}
+function loadSal(m){return parseFloat(localStorage.getItem(salKey(m))||'0');}
+function saveSal(m,v){localStorage.setItem(salKey(m),v);}
+function updateBreadcrumb(){
+  const keys=Object.keys(localStorage).filter(k=>k.startsWith('data_')).map(k=>k.slice(5));
+  keys.sort();
+  const bc=document.getElementById('breadcrumb'); bc.innerHTML='';
+  keys.forEach(m=>{
+    const li=document.createElement('li'); li.textContent=m;
+    li.onclick=()=>{ monthEl.value=m; render(); };
+    bc.appendChild(li);
+  });
+}
+function render(){
+  const m=monthEl.value; if(!m) return;
+  updateBreadcrumb();
+  const arr=load(m), sal=loadSal(m); salEl.value=sal;
+  let tot=0,pen=0; const tbody=document.getElementById('body'); tbody.innerHTML='';
+  arr.forEach((it,i)=>{
+    tot+=+it.amount; if(it.status==='Pendiente') pen+=+it.amount;
+    const tr=document.createElement('tr'); tr.className=it.status==='Pendiente'?'pend':'paid';
+    tr.innerHTML=`
+      <td><span contenteditable data-i="${i}" data-f="date">${it.date}</span></td>
+      <td><span contenteditable data-i="${i}" data-f="category">${it.category}</span></td>
+      <td><select data-i="${i}" data-f="type"><option ${it.type==='Fijo'?'selected':''}>Fijo</option><option ${it.type==='Esporádico'?'selected':''}>Esporádico</option><option ${it.type==='Ahorro'?'selected':''}>Ahorro</option></select></td>
+      <td><span contenteditable data-i="${i}" data-f="desc">${it.desc}</span></td>
+      <td><span contenteditable data-i="${i}" data-f="amount">${it.amount}</span></td>
+      <td><button class="tog" data-i="${i}">${it.status}</button></td>
+      <td>${it.ticket||`<input type="file" data-i="${i}" class="ticket">`}</td>
+      <td><select data-i="${i}" data-f="includeNext"><option ${it.includeNext==='Sí'?'selected':''}>Sí</option><option ${it.includeNext==='No'?'selected':''}>No</option></select></td>
+    `;
+    tbody.appendChild(tr);
+  });
+  document.getElementById('total').textContent=fmt.format(tot);
+  document.getElementById('pending').textContent=fmt.format(pen);
+  document.getElementById('remaining').textContent=fmt.format(sal-tot);
+  document.querySelectorAll('[contenteditable]').forEach(el=>el.onblur=()=>{
+    const d=load(m); d[el.dataset.i][el.dataset.f]=el.textContent; save(m,d); render();
+  });
+  document.querySelectorAll('select[data-f]').forEach(el=>el.onchange=()=>{
+    const d=load(m); d[el.dataset.i][el.dataset.f]=el.value; save(m,d); render();
+  });
+  document.querySelectorAll('.tog').forEach(btn=>btn.onclick=()=>{
+    const d=load(m); d[btn.dataset.i].status = d[btn.dataset.i].status==='Pendiente'?'Pagado':'Pendiente'; save(m,d); render();
+  });
+  document.querySelectorAll('.ticket').forEach(inp=>inp.onchange=e=>{
+    const d=load(m); d[inp.dataset.i].ticket=e.target.files[0].name; save(m,d); render();
+  });
+}
+monthEl.onchange=render;
+document.getElementById('saveSal').onclick=()=>{ saveSal(monthEl.value,salEl.value); render(); };
+document.getElementById('form').onsubmit=e=>{
+  e.preventDefault(); const f=e.target; const m=monthEl.value; let a=load(m);
+  a.push({date:f.date.value,category:f.category.value,type:f.type.value,desc:f.desc.value,amount:f.amount.value,status:'Pendiente',ticket:'',includeNext:f.includeNext.value});
+  save(m,a); render(); f.reset();
+};
+window.onload=()=>{ monthEl.value=new Date().toISOString().slice(0,7); render(); };
+</script>
+</body>
+</html>
